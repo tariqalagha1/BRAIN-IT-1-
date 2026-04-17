@@ -1,17 +1,128 @@
+version: "3.9"
+
 services:
-  backend:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: brainit-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-brainit_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-brainit_password}
+      POSTGRES_DB: ${DB_NAME:-brainit_db}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-brainit_user} -d ${DB_NAME:-brainit_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - brainit-network
+    restart: unless-stopped
+
+  # Brain it Core API (FastAPI) - Phase 6 Extended
+  brainit-core:
     build:
-      context: ./backend
+      context: ./brainit-platform/brainit-core
+      dockerfile: Dockerfile
+    container_name: brainit-core-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-Brain it Orchestration Core}
+      APP_ENV: ${APP_ENV:-production}
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
+      DATABASE_URL: postgresql://${DB_USER:-brainit_user}:${DB_PASSWORD:-brainit_password}@postgres:5432/${DB_NAME:-brainit_db}
+      ECHO_AGENT_URL: http://echo-agent:8001
+      TRANSFORM_AGENT_URL: http://transform-agent:8002
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
+    networks:
+      - brainit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Echo Agent Service
+  echo-agent:
+    build:
+      context: ./brainit-platform/agents/echo-agent-service
+      dockerfile: Dockerfile
+    container_name: brainit-echo-agent
+    environment:
+      APP_NAME: ${ECHO_AGENT_NAME:-Echo Agent}
+      APP_ENV: ${APP_ENV:-production}
+      SERVICE_PORT: 8001
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8001:8001"
+    networks:
+      - brainit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Transform Agent Service
+  transform-agent:
+    build:
+      context: ./brainit-platform/agents/transform-agent-service
+      dockerfile: Dockerfile
+    container_name: brainit-transform-agent
+    environment:
+      APP_NAME: ${TRANSFORM_AGENT_NAME:-Transform Agent}
+      APP_ENV: ${APP_ENV:-production}
+      SERVICE_PORT: 8002
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "8002:8002"
+    networks:
+      - brainit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # Frontend (Next.js)
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
+    container_name: brainit-frontend
+    depends_on:
+      brainit-core:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_APP_ENV: ${APP_ENV:-production}
     ports:
       - "3000:3000"
-    env_file:
-      - ./frontend/.env
-    depends_on:
-      - backend
+    networks:
+      - brainit-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  brainit-network:
+    driver: bridge
+
+

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from app.database import Base, engine
+from app.database import Base, engine, check_db_connection
 from app.routes import admin, auth, billing, dashboard, health
 
 settings = get_settings()
@@ -31,6 +31,18 @@ app.add_middleware(
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(_: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Unexpected server error", "error": str(exc)})
+
+
+# Root-level health check endpoint (for Docker healthcheck)
+@app.get("/health")
+def root_health_check():
+    """Health check endpoint for orchestration and monitoring."""
+    db_ok = check_db_connection()
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "service": "brainit-core",
+        "database": "ok" if db_ok else "error"
+    }
 
 
 app.include_router(health.router, prefix="/api")
