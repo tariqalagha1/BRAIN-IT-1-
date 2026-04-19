@@ -36,6 +36,14 @@ class ApiKeyService:
     def list_keys(self, db: Session) -> list[ApiKey]:
         return db.query(ApiKey).order_by(ApiKey.created_at.desc()).all()
 
+    def list_keys_by_tenant(self, db: Session, tenant_id: str) -> list[ApiKey]:
+        return (
+            db.query(ApiKey)
+            .filter(ApiKey.tenant_id == tenant_id)
+            .order_by(ApiKey.created_at.desc())
+            .all()
+        )
+
     def get_key(self, db: Session, key_id: str) -> ApiKey | None:
         return db.get(ApiKey, key_id)
 

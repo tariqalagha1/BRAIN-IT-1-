@@ -429,6 +429,11 @@ export default function BrainItWorkspace() {
     event?.preventDefault();
     setTaskError("");
 
+    if (!activeKey) {
+      setTaskError("Please create or select an API key before running tasks.");
+      return;
+    }
+
     if (!taskText.trim()) {
       setTaskError("Add text to run a task.");
       return;

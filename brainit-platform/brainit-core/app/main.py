@@ -17,6 +17,7 @@ from app.services.registry_service import RegistryService
 settings = get_settings()
 
 configure_logging()
+settings.log_config()
 init_db()
 with SessionLocal() as db:
 	RegistryService().seed_initial_registry(db)

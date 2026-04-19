@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth import ClientContext, get_client_context
 from app.database import get_db
 from app.schemas.api_key import ApiKeyCreateRequest, ApiKeyCreateResponse, ApiKeyMetadataResponse
 from app.services.api_key_service import ApiKeyService
@@ -26,8 +27,14 @@ def create_api_key(payload: ApiKeyCreateRequest, db: Session = Depends(get_db)) 
 
 
 @router.get("", response_model=list[ApiKeyMetadataResponse])
-def list_api_keys(db: Session = Depends(get_db)) -> list[ApiKeyMetadataResponse]:
-    keys = api_key_service.list_keys(db)
+def list_api_keys(
+    db: Session = Depends(get_db),
+    client_context: ClientContext = Depends(get_client_context),
+) -> list[ApiKeyMetadataResponse]:
+    if not client_context.api_key_id or not client_context.tenant_id:
+        raise HTTPException(status_code=401, detail="API key authentication is required")
+
+    keys = api_key_service.list_keys_by_tenant(db, client_context.tenant_id)
     return [
         ApiKeyMetadataResponse(
             id=key.id,
@@ -45,10 +52,20 @@ def list_api_keys(db: Session = Depends(get_db)) -> list[ApiKeyMetadataResponse]
 
 
 @router.post("/{key_id}/disable", response_model=ApiKeyMetadataResponse)
-def disable_api_key(key_id: str, db: Session = Depends(get_db)) -> ApiKeyMetadataResponse:
+def disable_api_key(
+    key_id: str,
+    db: Session = Depends(get_db),
+    client_context: ClientContext = Depends(get_client_context),
+) -> ApiKeyMetadataResponse:
+    if not client_context.api_key_id or not client_context.tenant_id:
+        raise HTTPException(status_code=401, detail="API key authentication is required")
+
     api_key = api_key_service.get_key(db, key_id)
     if api_key is None:
         raise HTTPException(status_code=404, detail="API key not found")
+    if api_key.tenant_id != client_context.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     disabled = api_key_service.disable_key(db, api_key)
     return ApiKeyMetadataResponse(
         id=disabled.id,
